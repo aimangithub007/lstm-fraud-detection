@@ -6,22 +6,19 @@ Script ini untuk PREDIKSI menggunakan model yang sudah dilatih
 sebelumnya (best_lstm_fraud_model.keras).
 
 CARA PAKAI:
-1. Upload file 'best_lstm_fraud_model.keras' ke folder yang sama
-   dengan script ini (atau sesuaikan MODEL_PATH di bawah).
+1. Upload 3 file ke folder yang sama dengan script ini:
+   - best_lstm_fraud_model.keras
+   - scaler.pkl
+   - le_merchant.pkl
+   (ketiganya dihasilkan otomatis oleh lstm-fraud-detection.py)
 2. Jalankan script ini.
 3. Lihat hasil prediksi fraud untuk data transaksi baru (simulasi).
-
-PENTING:
-- Scaler dan LabelEncoder di sini DIBUAT ULANG dari training data
-  yang sama (karena hanya model .keras yang di-upload).
-  Idealnya, scaler.pkl & le_merchant.pkl ikut disimpan saat training
-  supaya konsisten 100% -- lihat catatan di bagian bawah script.
 ===========================================================
 """
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+import joblib
 from tensorflow.keras.models import load_model
 
 SEED = 42
@@ -31,9 +28,10 @@ np.random.seed(SEED)
 # 0. KONFIGURASI -- HARUS SAMA PERSIS DENGAN SAAT TRAINING
 # ===========================================================
 MODEL_PATH = "best_lstm_fraud_model.keras"   # ganti sesuai lokasi file upload
+SCALER_PATH = "scaler.pkl"
+ENCODER_PATH = "le_merchant.pkl"
 WINDOW_SIZE = 5
 FEATURE_COLS = ["amount", "hour", "merchant_category_enc", "is_foreign", "time_since_last_tx"]
-MERCHANT_CATEGORIES = ["grocery", "electronics", "travel", "entertainment", "gas_station"]
 
 
 # ===========================================================
@@ -45,58 +43,17 @@ model.summary()
 
 
 # ===========================================================
-# 2. REBUILD SCALER & ENCODER DARI DATA TRAINING YANG SAMA
+# 2. LOAD SCALER & ENCODER (langsung dari hasil training, tanpa rekonstruksi)
 # ===========================================================
-# CATATAN PENTING:
-# Scaler & encoder di sini dibuat ulang memakai fungsi generator
-# yang SAMA dan SEED yang SAMA seperti saat training, supaya hasil
-# fit-nya identik dengan training asli.
-#
-# Jika kamu mengubah fungsi generate data atau melatih ulang model
-# dengan data berbeda, scaler/encoder ini HARUS diganti agar konsisten.
-# Cara paling aman untuk produksi nyata: simpan scaler.pkl & le_merchant.pkl
-# langsung saat training (lihat catatan di akhir file).
+print("\n>> Memuat scaler dari:", SCALER_PATH)
+scaler = joblib.load(SCALER_PATH)
 
-def generate_synthetic_transaction_data(n_users=500, max_tx_per_user=30,
-                                         fraud_rate=0.04, seed=SEED):
-    rng = np.random.default_rng(seed)
-    rows = []
-    for user_id in range(n_users):
-        n_tx = rng.integers(10, max_tx_per_user)
-        base_amount = rng.normal(200_000, 50_000)
-        for t in range(n_tx):
-            is_fraud = 1 if rng.random() < fraud_rate else 0
-            if is_fraud:
-                amount = base_amount * rng.uniform(3, 8)
-                hour = rng.choice([0, 1, 2, 3, 4, 23])
-                is_foreign = rng.choice([0, 1], p=[0.3, 0.7])
-                time_since_last = rng.uniform(0.01, 0.4)
-                merchant = rng.choice(["electronics", "travel"])
-            else:
-                amount = max(10_000, rng.normal(base_amount, base_amount * 0.3))
-                hour = rng.integers(6, 23)
-                is_foreign = rng.choice([0, 1], p=[0.95, 0.05])
-                time_since_last = rng.exponential(scale=12)
-                merchant = rng.choice(MERCHANT_CATEGORIES)
-            rows.append({
-                "user_id": user_id, "tx_order": t, "amount": round(amount, 2),
-                "hour": int(hour), "merchant_category": merchant,
-                "is_foreign": int(is_foreign), "time_since_last_tx": round(time_since_last, 2),
-                "is_fraud": is_fraud
-            })
-    return pd.DataFrame(rows)
+print(">> Memuat encoder dari:", ENCODER_PATH)
+le_merchant = joblib.load(ENCODER_PATH)
 
-
-df_train_ref = generate_synthetic_transaction_data()
-
-le_merchant = LabelEncoder()
-df_train_ref["merchant_category_enc"] = le_merchant.fit_transform(df_train_ref["merchant_category"])
-
-scaler = StandardScaler()
-scaler.fit(df_train_ref[FEATURE_COLS].values)
-
-print("\n>> Scaler & LabelEncoder berhasil direkonstruksi dari data referensi training.")
+print(">> Scaler & LabelEncoder berhasil dimuat langsung dari hasil training.")
 print(">> Kelas merchant dikenal:", list(le_merchant.classes_))
+
 
 
 # ===========================================================
@@ -228,22 +185,15 @@ for _, row in results.iterrows():
 
 
 # ===========================================================
-# CATATAN UNTUK PRODUKSI YANG LEBIH AMAN
+# CATATAN
 # ===========================================================
-# Script ini merekonstruksi scaler & encoder dari ulang generate data
-# training (karena hanya file .keras yang di-upload). Ini AMAN selama
-# fungsi generator & seed tidak berubah dari training asli.
+# Script ini memuat scaler & encoder LANGSUNG dari file yang disimpan
+# saat training (scaler.pkl, le_merchant.pkl) -- bukan direkonstruksi.
+# Ini cara yang aman: scaler/encoder di sini PASTI identik dengan yang
+# dipakai saat training, tidak ada risiko ketidaksesuaian.
 #
-# Untuk deployment produksi sesungguhnya, sebaiknya saat training kamu
-# juga simpan scaler & encoder langsung, contoh:
-#
-#   import joblib
-#   joblib.dump(scaler, "scaler.pkl")
-#   joblib.dump(le_merchant, "le_merchant.pkl")
-#
-# lalu saat inference, load langsung tanpa rekonstruksi:
-#
-#   scaler = joblib.load("scaler.pkl")
-#   le_merchant = joblib.load("le_merchant.pkl")
-#
-# Ini menghindari risiko ketidaksesuaian jika generator data berubah.
+# Pastikan ketiga file berikut berasal dari sesi training yang SAMA:
+#   - best_lstm_fraud_model.keras
+#   - scaler.pkl
+#   - le_merchant.pkl
+# Jika kamu retrain model dengan data baru, download ulang ketiganya.

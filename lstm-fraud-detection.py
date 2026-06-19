@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import joblib
 
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
@@ -153,6 +154,10 @@ print(">> perlu class_weight saat training (lihat bagian Training).")
 le_merchant = LabelEncoder()
 df["merchant_category_enc"] = le_merchant.fit_transform(df["merchant_category"])
 
+# Simpan encoder agar bisa dipakai langsung saat inference (tanpa rekonstruksi)
+joblib.dump(le_merchant, "le_merchant.pkl")
+print(">> le_merchant.pkl disimpan.")
+
 feature_cols = ["amount", "hour", "merchant_category_enc", "is_foreign", "time_since_last_tx"]
 
 # PENTING: scaling fit HANYA di data training nanti (hindari data leakage).
@@ -225,6 +230,10 @@ X_train_2d = X_train.reshape(-1, n_features)
 X_test_2d = X_test.reshape(-1, n_features)
 
 scaler.fit(X_train_2d)  # fit HANYA di training -> hindari data leakage
+
+# Simpan scaler agar bisa dipakai langsung saat inference (tanpa rekonstruksi)
+joblib.dump(scaler, "scaler.pkl")
+print(">> scaler.pkl disimpan.")
 
 X_train_scaled = scaler.transform(X_train_2d).reshape(X_train.shape)
 X_test_scaled = scaler.transform(X_test_2d).reshape(X_test.shape)
@@ -419,4 +428,6 @@ plt.savefig("eval_training_history.png", dpi=100, bbox_inches="tight")
 plt.close()
 
 print("\n>> Selesai. Model terbaik tersimpan di 'best_lstm_fraud_model.keras'")
+print(">> Scaler tersimpan di 'scaler.pkl', encoder di 'le_merchant.pkl'")
 print(">> Semua plot EDA & evaluasi tersimpan sebagai file .png")
+print(">> Untuk inference, download ketiga file: .keras, scaler.pkl, le_merchant.pkl")
